@@ -3,6 +3,7 @@ package fintech.homework05
 import java.time.Instant
 import java.util.UUID
 
+import com.sun.jmx.snmp.SnmpUnknownSubSystemException
 import com.sun.net.httpserver.Authenticator.Success
 
 /**
@@ -37,7 +38,9 @@ case class Tweet(id: String,
                  likes: Int)
 
 case class CreateTweetRequest(text: String, user: String)
+
 case class GetTweetRequest(id: String)
+
 case class LikeRequest(id: String)
 
 trait TweetStorage {
@@ -46,78 +49,73 @@ trait TweetStorage {
 
   def getTweet(id: String): Result[Tweet]
 
-  def likeTweet(tweet: Tweet): Result[Int]
+  def updateTweet(renewal: Tweet): Result[Tweet]
 }
 
 class MapStorage(private var storage: Map[String, Tweet] = Map.empty) extends TweetStorage {
 
-    def saveTweet(tweet: Tweet): Result[Tweet] = storage.get(tweet.id) match {
-      case Some(_) => Error("Tweet with this id already exists")
-      case None =>
-        storage = storage.updated(tweet.id, tweet)
-        Success(tweet)
-    }
+  def saveTweet(tweet: Tweet): Result[Tweet] = storage.get(tweet.id) match {
+    case Some(_) => Error("Tweet with this id already exists")
+    case None =>
+      storage += tweet.id -> tweet
+      Success(tweet)
+  }
 
-    def getTweet(id: String): Result[Tweet] = storage.get(id) match {
-      case Some(t) => Success(t)
+  def getTweet(id: String): Result[Tweet] = storage.get(id) match {
+    case Some(t) => Success(t)
+    case None => Error("There's no tweet with this id")
+  }
+
+  private def deleteTweet(id: String): Result[Tweet] = {
+    val tweet = storage.get(id)
+    tweet match {
+      case Some(t) =>
+        storage -= id
+        Success(t)
       case None => Error("There's no tweet with this id")
     }
+  }
 
-    private def deleteTweet(id: String): Result[Tweet] = {
-      val tweet = storage.get(id)
-      tweet match{
-        case Some(t) =>
-          storage = storage.filter(p => p._1 != id)
-          Success(t)
-        case None => Error("There's no tweet with this id")
-      }
+  def updateTweet(renewal: Tweet): Result[Tweet] = {
+    deleteTweet(renewal.id) match {
+      case Error(message) => Error(message)
+      case Success(_) =>
+        storage += renewal.id -> renewal
+        Success(renewal)
     }
-
-    def likeTweet(tweet: Tweet): Result[Int] = {
-      val t = Tweet(tweet.id,
-        tweet.user,
-        tweet.text,
-        tweet.hashTags,
-        tweet.createdAt,
-        tweet.likes + 1)
-      deleteTweet(tweet.id) match {
-        case Error(message) => Error(message)
-        case Success(_) =>
-          saveTweet(t)
-          Success(tweet.likes + 1)
-      }
-    }
+  }
 }
 
-  class TweetApi(storage: TweetStorage) {
-    private def getHashTags(text: String): Seq[String] =
-      text.split(" ").filter(p => p.length > 0 && p.charAt(0) == '#')
+class TweetApi(storage: TweetStorage) {
+  private def getHashTags(text: String): Seq[String] =
+    text.split(" ").filter(p => p.length > 0 && p.charAt(0) == '#')
 
-    def createTweet(request: CreateTweetRequest): Result[Tweet] = request match {
-      case CreateTweetRequest(text, user) if text.length < 1 => Error("Length of your Tweet should be more than 0")
-      case CreateTweetRequest(text, user) => storage.saveTweet(Tweet(UUID.randomUUID.toString,
-        user,
-        text,
-        getHashTags(text),
-        Some(Instant.now()),
-        0))
-    }
+  def createTweet(request: CreateTweetRequest): Result[Tweet] = request match {
+    case CreateTweetRequest(text, user) if text.length < 1 => Error("Length of your Tweet should be more than 0")
+    case CreateTweetRequest(text, user) => storage.saveTweet(Tweet(UUID.randomUUID.toString,
+      user,
+      text,
+      getHashTags(text),
+      Some(Instant.now()),
+      0))
+  }
 
-    def getTweet(request: GetTweetRequest): Result[Tweet] = storage.getTweet(request.id)
+  def getTweet(request: GetTweetRequest): Result[Tweet] = storage.getTweet(request.id)
 
-    def likeTweet(request: LikeRequest): Result[Int] = storage.getTweet(request.id) match {
+  def likeTweet(request: LikeRequest): Result[Int] = storage.getTweet(request.id) match {
+    case Error(message) => Error(message)
+    case Success(tweet: Tweet) => storage.updateTweet(tweet.copy(likes = tweet.likes + 1)) match {
+      case Success(t: Tweet) => Success(t.likes)
       case Error(message) => Error(message)
-      case Success(tweet: Tweet) => storage.likeTweet(tweet)
     }
   }
+}
 
-  sealed trait Result[+T]{
-    def value: T = this match {
-      case Success(v) => v
-    }
-  }
-  final case class Success[T](v: T) extends Result[T]
-  final case class Error[T](v: String) extends Result[T]
+sealed trait Result[+T]
+
+final case class Success[T](v: T) extends Result[T]
+
+final case class Error[T](v: String) extends Result[T]
 
 
 object TweetApiExample extends App {

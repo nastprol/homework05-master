@@ -31,7 +31,7 @@ class TweetStorageSpec extends FlatSpec with Matchers {
   }
 
   it should "like Tweet correctly" in {
-    storage.likeTweet(tweet) should be(Success(1))
+    storage.updateTweet(tweet.copy(likes = tweet.likes + 1)) should be(Success(tweet.copy(likes = tweet.likes + 1)))
   }
 
   it should "return correct Error if there is no Tweet with this ID to like" in {
@@ -41,6 +41,6 @@ class TweetStorageSpec extends FlatSpec with Matchers {
       Seq("#hello"),
       Some(Instant.now),
       0)
-    storage.likeTweet(otherTweet) should be(Error("There's no tweet with this id"))
+    storage.updateTweet(otherTweet) should be(Error("There's no tweet with this id"))
   }
 }

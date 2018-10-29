@@ -7,15 +7,20 @@ class TweetAppSpec extends FlatSpec with Matchers {
   val storage = new MapStorage()
   val app = new TweetApi(storage)
   val request = CreateTweetRequest("Hello #hello", "nastya")
-  val created: Tweet = app.createTweet(request).value
+  val created = app.createTweet(request) match {
+    case Success(t: Tweet) => t
+    case Error(msg) => Error(msg)
+  }
+  val createdTweet: Tweet = created.asInstanceOf[Tweet]
 
   it should "create Tweet correctly" in {
-    created should be(Tweet(created.id, "nastya", "Hello #hello", Seq("#hello"), created.createdAt, 0))
+    createdTweet should be(Tweet(createdTweet.id, "nastya", "Hello #hello", Seq("#hello"), createdTweet.createdAt, 0))
   }
 
   it should "return correct Tweet" in {
-    val r = GetTweetRequest(created.id)
-    app.getTweet(r).value should be(created)
+    val r = GetTweetRequest(createdTweet.id)
+
+    app.getTweet(r) should be(Success(createdTweet))
   }
 
   it should "return correct Error if there is less than 1 symbols in the Tweet text" in {
@@ -25,8 +30,21 @@ class TweetAppSpec extends FlatSpec with Matchers {
   }
 
   it should "increase number of likes" in {
-    app.likeTweet(LikeRequest(created.id))
-    storage.getTweet(created.id).value.likes should be(1)
+    val r = CreateTweetRequest("Hello #hello", "nastya")
+    val c = app.createTweet(r) match {
+      case Success(t: Tweet) => t
+      case Error(msg) => Error(msg)
+    }
+    val ct: Tweet = c.asInstanceOf[Tweet]
+
+    app.likeTweet(LikeRequest(ct.id))
+    val liked = storage.getTweet(ct.id) match {
+      case Success(t: Tweet) => t
+      case Error(msg) => Error(msg)
+    }
+
+    val likedTweet = liked.asInstanceOf[Tweet]
+    likedTweet.likes should be(1)
   }
 
   it should "return correct Error if there is no tweet with this id to like" in {
